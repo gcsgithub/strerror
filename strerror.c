@@ -159,8 +159,7 @@ int main (int argc,  char * argv[])
     char        c;
     int         usage;
     char        *prognam;
-    ssize_t     buf_len;
-    char        *buf_dyn;
+
     int         err;
     const char  *errstr;
     opt_t       opt;
