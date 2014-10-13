@@ -1,42 +1,36 @@
-# @(#) $Id:$
-# $Log:$
+# @(#) $Id: Makefile,v 1.1 2010/04/14 03:37:24 mark Exp $
+# $Log: Makefile,v $
+# Revision 1.1  2010/04/14 03:37:24  mark
+# Initial revision
+#
 # 
 -include	.depend
 
-
-CC=cc
-
 INCLUDE         = -I. -I/usr/local/include
-#LDFLAGS         = 
-#LDFLAGS         = -arch ppc -arch i386
 
-#DCFLAGS = -g -pthread
 DCFLAGS = -g $(INCLUDE)
-#DCFLAGS = -O4 -s -falign-loops=16 -funroll-loops -pthread
-#DCFLAGS = -O4 -s -falign-loops=16 -funroll-loops -pthread -DDEBUG_THREAD
-
-#DCFLAGS = -g -s -D__NEEDSTRSEP__ -DDEBUG_ONMAC -DDEBUG
 
 CFLAGS	= $(DCFLAGS) $(INCLUDE)
-#CFLAGS	= $(DCFLAGS) -arch ppc -arch i386
-
-#DEBUG	= 
-DEBUG	= -DDEBUG -DNEEDASPRINTF
+CFLAGS	= $(DCFLAGS)
+LDFLAGS         = 
 
 SRCS	= strerror.c
 OBJS	= strerror.o
-
-
 PROGS	= strerror
-
-.SUFFIXES: .o
 
 all:	$(PROGS)
 
+#DEBUG	= -DDEBUG 
+DEBUG	= 
+
+
+
+
+.SUFFIXES: .o
+
+
 .c.o:	
 	${CC} ${CFLAGS} ${REDEFS} ${DEBUG} -c $<
-
-
 
 $(OBJS):	Makefile
 

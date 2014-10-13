@@ -1,10 +1,13 @@
-static const char *rcsid="@(#) $Id: strerror.c,v 1.2 2010/09/08 08:01:23 mark Exp mark $";
+static const char *rcsid="@(#) $Id: strerror.c,v 1.3 2013/02/17 20:00:01 mark Exp $";
 /*
  *  strerror
  *
  *  Created by mark on 14/04/2010.
  *  Copyright 2010 Garetech Computer Solutions. All rights reserved.
  * $Log: strerror.c,v $
+ * Revision 1.3  2013/02/17 20:00:01  mark
+ * MG20130218- add curl error lookups
+ *
  * Revision 1.2  2010/09/08 08:01:23  mark
  * output error string to stdout stderr is a bit usless in this context
  *
@@ -18,6 +21,9 @@ static const char *rcsid="@(#) $Id: strerror.c,v 1.2 2010/09/08 08:01:23 mark Ex
 #include <sysexits.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
 
 #include <stdarg.h>
 #include <unistd.h>
@@ -31,9 +37,11 @@ void dousage(char *prognam);
 
 void dousage(char *prognam)
 {
-    fprintf(stderr, "Usage: %s [-c|-s] <errno>\nprint error message matching errno and exit with status errno\n", prognam);
+    fprintf(stderr, "Usage: %s [-c|-s|-g|-<errno>] <errno>\nprint error message matching errno and exit with status errno\n", prognam);
     fprintf(stderr, "-c use curl error lookups\n");
     fprintf(stderr, "-s use sysexits\n");
+    fprintf(stderr, "-g use gia_strerror\n");
+    fprintf(stderr, "-<errno> report using standard system errors even when -c,-s,-g enabled\n");
     
     exit(EINVAL);
 }
@@ -43,29 +51,29 @@ typedef struct {
     const char  *errmsg;
 } SYSERR_LST_t;
 
-SYSERR_LST_t SYSERR_LST[] = {
-	{ EX_OK          , "successful termination"			},
-	{ EX__BASE       , "base value for error messages"		},
-	{ EX_USAGE       , "command line usage error"			},
-	{ EX_DATAERR     , "data format error"				},
-	{ EX_NOINPUT     , "cannot open input"				},
-	{ EX_NOUSER      , "addressee unknown"				},
-	{ EX_NOHOST      , "host name unknown"				},
-	{ EX_UNAVAILABLE , "service unavailable"			},
-	{ EX_SOFTWARE    , "internal software error"			},
-	{ EX_OSERR       , "system error (e.g., can't fork)"		},
-	{ EX_OSFILE      , "critical OS file missing"			},
-	{ EX_CANTCREAT   , "can't create (user) output file"		},
-	{ EX_IOERR       , "input/output error"				},
-	{ EX_TEMPFAIL    , "temp failure; user is invited to retry"	},
-	{ EX_PROTOCOL    , "remote error in protocol"			},
-	{ EX_NOPERM      , "permission denied"				},
-	{ -1             , NULL						}
+const SYSERR_LST_t SYSERR_LST[] = {
+    { EX_OK          , "successful termination"			},
+    { EX__BASE       , "base value for error messages"		},
+    { EX_USAGE       , "command line usage error"			},
+    { EX_DATAERR     , "data format error"				},
+    { EX_NOINPUT     , "cannot open input"				},
+    { EX_NOUSER      , "addressee unknown"				},
+    { EX_NOHOST      , "host name unknown"				},
+    { EX_UNAVAILABLE , "service unavailable"			},
+    { EX_SOFTWARE    , "internal software error"			},
+    { EX_OSERR       , "system error (e.g., can't fork)"		},
+    { EX_OSFILE      , "critical OS file missing"			},
+    { EX_CANTCREAT   , "can't create (user) output file"		},
+    { EX_IOERR       , "input/output error"				},
+    { EX_TEMPFAIL    , "temp failure; user is invited to retry"	},
+    { EX_PROTOCOL    , "remote error in protocol"			},
+    { EX_NOPERM      , "permission denied"				},
+    { -1             , NULL						}
 };
 
-SYSERR_LST_t *lookup_syserr(SYSERR_LST_t *errlist, int err);
+const SYSERR_LST_t *lookup_syserr(const SYSERR_LST_t *errlist, int err);
 
-SYSERR_LST_t   CURLERR_LST[] = {
+const SYSERR_LST_t CURLERR_LST[] = {
     { 1, "Unsupported protocol. This build of curl has no support for this protocol." },
     { 2, "Failed to initialize." },
     { 3, "URL malformed. The syntax was not correct." },
@@ -144,33 +152,68 @@ SYSERR_LST_t   CURLERR_LST[] = {
     { -1 ,NULL }
 };
 
+typedef enum { opt_none, opt_c, opt_s, opt_g, opt_std } opt_t;
 
 int main (int argc,  char * argv[])
 {
-    
-    
-    char	c;
-    int     usage;
-    char    *prognam;
-    int     err;
-    SYSERR_LST_t *syserr;
-    SYSERR_LST_t *errlist;
-    
-    usage =   0;
-    optarg  =   NULL;
+    char        c;
+    int         usage;
+    char        *prognam;
+    ssize_t     buf_len;
+    char        *buf_dyn;
+    int         err;
+    const char  *errstr;
+    opt_t       opt;
+    const SYSERR_LST_t  *errent;
     
     prognam = argv[0];
-    errlist = NULL;
-    while (!usage && ((c=getopt(argc,argv, "csh?")) != -1 )) {
+    opt     = opt_std;
+    errent  = NULL;
+    errstr  = NULL;
+    usage   = 0;
+    optarg  = NULL;
+    
+    err = 0;
+    
+    while (!usage && ((c=getopt(argc,argv, "csgh?0123456789")) != -1 )) {
         switch(c) {
             case 'c':
-                errlist = CURLERR_LST;
+                opt = opt_c;
                 break;
+                
             case 's':
-                errlist = SYSERR_LST;
+                opt = opt_s;
+                break;
+                
+            case 'g':
+                opt = opt_g;
+                break;
+                
+            case '?': // maybe still valid check optopt
+                    usage++;
+                break;
+                
+            case '0':
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '5':
+            case '6':
+            case '7':
+            case '8':
+            case '9':
+                //
+                // -errno defaults back to standard system errors
+                // this allows a system error to be reported using -c -s -g
+                //
+                opt = opt_std;
+                err = (err*10) + (c-'0');
+                
                 break;
                 
             default:
+                opt = opt_std;
                 usage++;
                 break;
         }
@@ -178,32 +221,59 @@ int main (int argc,  char * argv[])
     argc -= (optind);
     argv += (optind);
     
-    if (argc < 1 ) {
-        usage++;
-    }
-    
-    if (usage) {
-	    dousage(prognam);
-        exit(EINVAL);
-	}
-    
-    sscanf(argv[0],"%d", &err);
-    
-    if (errlist) {
-        syserr = lookup_syserr(errlist, err);
-        if (syserr && syserr->errmsg) {
-            fprintf(stdout, "%s\n", syserr->errmsg);
-            exit(err);
+    if (err == 0) { // Don't yet have err number so check we have an argument
+        if (argc < 1 ) {
+            usage++;
+        }
+        else {
+            sscanf(argv[0],"%d", &err);
         }
     }
     
-    fprintf(stdout, "%s\n", strerror(err));
+    if (usage) {
+        dousage(prognam);
+        exit(EINVAL);
+    }
+    
+    
+    switch(opt) {
+        case opt_none:
+            dousage(prognam);
+            exit(EINVAL);
+            break;
+            
+        case opt_c:
+            errent = lookup_syserr(CURLERR_LST, err);
+            break;
+            
+        case opt_s:
+            errent = lookup_syserr(SYSERR_LST, err);
+            break;
+            
+        case opt_g:
+            errstr = gai_strerror(err);
+            break;
+            
+        case opt_std:
+            errstr = strerror(err);
+            break;
+    }
+    
+    if (errent) {
+        errstr = errent->errmsg;
+    }
+    
+    if (!errstr) {
+        errstr="Unknown error";
+    }
+    
+    fprintf(stdout, "%s\n", errstr);
     exit(err);
 }
 
-SYSERR_LST_t *lookup_syserr(SYSERR_LST_t *errlist, int err)
+const SYSERR_LST_t *lookup_syserr(const SYSERR_LST_t *errlist, int err)
 {
-    SYSERR_LST_t *rval;
+    const SYSERR_LST_t *rval;
     int idx;
     
     rval = (SYSERR_LST_t *) NULL;
